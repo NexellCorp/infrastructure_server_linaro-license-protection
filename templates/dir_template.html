@@ -1,0 +1,80 @@
+{% extends "header.html" %}
+
+{% block content %}
+{{ header_content|safe }}
+<table>
+    <thead>
+        <tr>
+            <th></th><th>Name</th><th>Last modified</th><th>Size</th><th>License</th>
+        </tr>
+        <tr>
+            <th colspan="5"><hr></th>
+        </tr>
+    </thead>
+  {% if up_dir != None %}
+    <tr>
+      <td>
+        <img src="{{ STATIC_URL }}/static/go-up.png" alt="Parent Directory"/>
+      </td>
+      <td colspan="0"><a href="{{ up_dir }}">Parent Directory</a></td>
+    </tr>
+  {% endif %}
+
+{% for value in dirlist %}
+  <tr onmouseover="this.style.background='#CBE68F'" onmouseout="this.style.background='#FFFFFF'">
+    <td valign="top">
+      <img src="{{ STATIC_URL }}/static/{{ value.type }}.png"
+           alt="{{ value.type }}">
+    </td>
+    <td>
+      <a href="{{ value.url }}"
+       {% if value.type  != 'folder' %}
+         onclick="javascript:trackDownload(
+                    'Download Attempted', '{{ value.url }}');"
+       {% endif %}
+         >{{ value.name }}</a>
+    </td>
+    <td align="center">{{ value.mtime }}  </td>
+    <td align="center">
+      {% if value.type != 'folder' %}{{ value.size }}{% endif %}
+    </td>
+    <td align="center">
+      {% if value.license_digest_list == "OPEN" %}
+        <i>open</i>
+      {% else %}
+      {% for license in value.license_list %}
+      {{ license.theme }}
+      {% endfor %}
+      {% endif %}
+    </td>
+  </tr>
+{% endfor %}
+</table>
+
+<br><br>
+{% if rendered_files != None %}
+<div id="tabs">
+  <ul id="tabs-titles">
+    {% for title, html_text in rendered_files.items %}
+    <li><a href="#tabs-{{ forloop.counter }}">{{ title }}</a></li>
+    {% endfor %}
+  </ul>
+
+  {% for title, html_text in rendered_files.items %}
+  <div id="tabs-{{ forloop.counter }}">
+    {% autoescape off %}
+      {{ html_text }}
+    {% endautoescape %}
+  </div>
+  {% endfor %}
+
+</div>
+
+<script>
+  $(function() {
+    $("#tabs").tabs();
+  });
+</script>
+{% endif %}
+
+{% endblock %}

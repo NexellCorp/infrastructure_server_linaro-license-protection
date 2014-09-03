@@ -1,0 +1,209 @@
+Linaro publishing platform
+==========================
+
+Linaro provides regular builds of Ubuntu, Android, OpenEmbedded, kernels,
+toolchains for supported ARM boards.  They all have slightly differing
+goals and purposes, and require slightly different publication rules.
+
+This code provides a django application allowing restricted and controlled
+access to any published results.  It also contains code which allows for
+publishing in according to structure that the django application requires.
+
+This code is behind snapshots.linaro.org and releases.linaro.org.
+
+Features
+--------
+ * makes use of the regular directory structure on disk
+ * click through licensing with each file potentially having a different
+   license/theme
+ * group-based access authorization restrictions (using group information
+   from external services, currently OpenID with team extensions
+   (as used by Launchpad.net) and Atlassian Crowd are supported).
+ * post-processing of all uploads (a script that manages uploads)
+ * per-IP pass-through (for automatic services like a test framework)
+ * key based file uploads into a private area.
+
+Background
+----------
+This code originated as mod_rewrite hacks to provide click-through licensing
+for tarballs containing "binary blobs"—pieces of binary-only code
+which enable extra features like accelerated graphics or multimedia.
+These pieces are distributed under a separate license, and downloading
+images or collections containing them requires some sort of license
+protection.
+
+However, over time, more and more features were added until a point where
+it was necessary to switch to a better framework for web application
+development such as apache+mod_python+django+mod_xsendfile.
+
+Installation and setup
+----------------------
+
+See INSTALL file.
+
+Publishing new builds
+---------------------
+
+To publish a new build, one should include a BUILD-INFO.txt file with
+the build artifacts (see below for the description of the BUILD-INFO.txt
+syntax).
+
+BUILD-INFO.txt file will allow one to specify the access restrictions
+(such as click-through licensing and required groups) and influence
+the display (such as license-theme) of a particular build.
+
+WARNING: if you want a build to be protected by OpenID-based groups, you
+need to ensure that the appropriate team is added to the list of django
+groups in the database. Only django admins can do that.
+
+Next step is to ensure that
+
+  scripts/publish_to_snapshots.py
+
+has support for your build type.  Builds are originally placed into
+a single, private location on the target server, and expect a run of
+the above script for them to be placed in the right area.  This script
+can (and should) do any post-processing and checks for your build before
+it is placed in the public area for downloading.
+
+Your jenkins job (or whatever is doing the build and pushing the artifacts)
+should use push-over-ssh to push the builds to the server first, and then
+trigger a run of "scripts/publish_to_snapshots.py" with appropriate parameters
+to get it placed under the relevant subtree.
+
+This ensures that no incomplete files are ever offered for download, and
+allows postprocessing in a secure and controlled manner.
+
+After that, if scripts/publish_to_snapshots.py is configured to push
+to the right location, your build files should show up on the host
+running the django application.  BUILD-INFO configuration will take effect,
+so it may be inaccessible to the general public.
+
+
+Publishing API
+--------------
+To upload a file using the publishing API you need a key. This can be obtained
+by the query <server>/api/request_key?<MASTER_API_KEY> where MASTER_API_KEY
+is stored in local_settings.py.
+
+Now you can use HTTP PUT requests to push up files:
+curl -F file=@<file> -F key=<key> <server>/path/to/store/file
+
+And this file can be downloaded from:
+<server>/path/to/store/file?key=<key>
+
+ * By default API key protected files have no further license protection.
+ * You can upload multiple files with the same key
+ * Directories are automatically created
+ * File listings still work (as long as you append ?key=<key> to the URL)
+
+Once you have finished with the files, you can delete all files associated
+with a temporary API key by deleting the key:
+
+curl <server>/api/delete_key?key=<key>
+
+Uploading files to a public directory is not supported. This is planned for
+the future.
+
+
+Build-Info support
+------------------
+
+BUILD-INFO.txt format
+.....................
+
+Paragraphs
+..........
+
+ * Header paragraph
+ * Files paragraph
+
+Header paragraph (once)
+.......................
+
+The following fields must be present in a header paragraph:
+ * Format-Version: (required)
+    Version of the BUILD-INFO format (currently "0.1").
+
+Files paragraph (repeatable)
+............................
+
+The following fields may be present in a files paragraph:
+ * Files-Pattern: (required, must be the first field in the paragraph)
+    Comma separated filename patterns that are specified using a simplified
+    shell glob syntax. Will be used to identify protected files.
+ * Build-Name: (optional)
+    Would be unique over all the builds of the same type. For now used as
+    a placeholder and will be ignored. To be added later by build services?
+ * License-Type: (required)
+    open - Open builds. No license page is displayed.
+    protected - EULA protected builds. If 'Auth-Groups' is defined
+      then group authorization is used, otherwise simple Accept/Decline license
+      page is displayed before accessing protected files.
+ * Theme: (required only if License-Type is 'protected')
+    Acceptable values are: stericsson, samsung.
+    Theme name for selecting proper theming on download and license pages.
+ * Auth-Groups: (optional)
+    List of groups, members of which are allowed to access protected files.
+    No group-based protection if absent.
+ * Collect-User-Data: (optional)
+    Acceptable values are: yes, no.
+    Defaults to 'no' if not present. If the field is set to 'yes' then
+    Name and E-Mail (some other fields?) fields are asked to be filled. If it
+    will be needed in the future it could be expanded with
+    'Collect-User-Data-Fields' field later or any other approach.
+ * License-Text: (required only if License-Type is 'protected')
+     EULA full text included in BUILD-INFO.txt
+
+- If line begins with space character ' ' it is treated as a part of last found
+variable which turns as multiline variable and is appended to it.
+- Field names are case insensitive.
+- Fields order doesn't matter, except 'Files-Pattern'
+
+History of BUILD-INFO.txt format changes
+........................................
+
+Changes from format version 0.1 to 0.5:
+
+1. Field "OpenID-Launchpad-Teams" is deprecated and renamed to
+"Auth-Groups". Old name is supported for archived builds, however
+it may lead to warnings, and at later time to errors, during
+publishing new builds, so client usage should be upgraded.
+
+BUILD-INFO.txt example:
+.......................
+
+Format-Version: 0.5
+
+Files-Pattern: *.img, *.tar.bz2
+Build-Name: landing-snowball
+License-Type: protected
+Theme: stericsson
+License-Text: EULA full text displayed to user.
+ You should accept to download file.
+
+Files-Pattern: *.txt
+Bulid-Name: landing-snowball
+License-Type: open
+
+
+License protection script takes information from the BUILD-INFO.txt file placed
+in the same directory as artifacts, finds 'Files-Pattern' block corresponding
+to requested file and applies rules from that block to download procedure.
+If no BUILD-INFO.txt is found it falls back to per-file/per-directory EULA
+protection.
+
+Custom scripts
+--------------
+
+Validation
+..........
+
+The validation script purpose is to discover and print the list of
+directories which contain a build but do not have any kind of licensing
+protection. Furthermore, it will list all *origen* and *snowball* build
+paths which contain OPEN-EULA license and print out all the build paths where
+the BUILD-INFO is used but which are not covered by build info patterns.
+Usage:
+
+./validation.py root_builds_dir
