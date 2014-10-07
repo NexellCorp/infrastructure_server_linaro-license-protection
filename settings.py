@@ -264,7 +264,9 @@ except ImportError:
 
     # At the moment the publishing API is still in development so it is
     # disabled...
-    if False:
+    # psw0523 test
+    #if False:
+    if True:
         # MASTER_API_KEY contains characters that don't have to be % encoded
         # in an HTTP URL.
         master_api_key = ''.join(random.sample(char_selection, 50))
