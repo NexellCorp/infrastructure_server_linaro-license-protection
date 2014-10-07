@@ -1,29 +1,26 @@
-# -*- coding: utf-8 -*-
+# encoding: utf-8
+import datetime
 from south.db import db
 from south.v2 import SchemaMigration
 from django.db import models
 
-
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        # Adding field 'APIKeyStore.description'
-        db.add_column('license_protected_downloads_apikeystore', 'description',
-                      self.gf('django.db.models.fields.CharField')(default='', max_length=40),
-                      keep_default=False)
-
-        # Adding field 'APIKeyStore.last_used'
-        db.add_column('license_protected_downloads_apikeystore', 'last_used',
-                      self.gf('django.db.models.fields.DateTimeField')(auto_now=True, null=True, blank=True),
-                      keep_default=False)
+        
+        # Adding model 'APIToken'
+        db.create_table('license_protected_downloads_apitoken', (
+            ('token', self.gf('django.db.models.fields.CharField')(max_length=40, primary_key=True)),
+            ('key', self.gf('django.db.models.fields.related.ForeignKey')(to=orm['license_protected_downloads.APIKeyStore'])),
+            ('expires', self.gf('django.db.models.fields.DateTimeField')(null=True, blank=True)),
+        ))
+        db.send_create_signal('license_protected_downloads', ['APIToken'])
 
 
     def backwards(self, orm):
-        # Deleting field 'APIKeyStore.description'
-        db.delete_column('license_protected_downloads_apikeystore', 'description')
-
-        # Deleting field 'APIKeyStore.last_used'
-        db.delete_column('license_protected_downloads_apikeystore', 'last_used')
+        
+        # Deleting model 'APIToken'
+        db.delete_table('license_protected_downloads_apitoken')
 
 
     models = {
@@ -43,6 +40,12 @@ class Migration(SchemaMigration):
             'label': ('django.db.models.fields.CharField', [], {'max_length': '32'}),
             'path': ('django.db.models.fields.CharField', [], {'max_length': '256'}),
             'timestamp': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'blank': 'True'})
+        },
+        'license_protected_downloads.apitoken': {
+            'Meta': {'object_name': 'APIToken'},
+            'expires': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
+            'key': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['license_protected_downloads.APIKeyStore']"}),
+            'token': ('django.db.models.fields.CharField', [], {'max_length': '40', 'primary_key': 'True'})
         },
         'license_protected_downloads.license': {
             'Meta': {'object_name': 'License'},

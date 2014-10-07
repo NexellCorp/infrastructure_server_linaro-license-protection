@@ -6,9 +6,6 @@ import tempfile
 import unittest
 import urllib2
 import urlparse
-import json
-import random
-import shutil
 
 import mock
 
@@ -17,13 +14,11 @@ from django.test import Client, TestCase
 from django.http import HttpResponse
 
 from license_protected_downloads.buildinfo import BuildInfo
+from license_protected_downloads.common import _insert_license_into_db
 from license_protected_downloads.config import INTERNAL_HOSTS
-from license_protected_downloads.models import APIKeyStore
 from license_protected_downloads.tests.helpers import temporary_directory
 from license_protected_downloads.tests.helpers import TestHttpServer
-from license_protected_downloads.views import _insert_license_into_db
 from license_protected_downloads.views import _process_include_tags
-from license_protected_downloads.views import _sizeof_fmt
 from license_protected_downloads.views import is_same_parent_dir
 from license_protected_downloads import views
 
@@ -130,7 +125,8 @@ class ViewTests(BaseServeViewTest):
         # Test that we use the "linaro" theme. This contains linaro.png
         self.assertContains(response, "linaro.png")
 
-    def set_up_license(self, target_file, index=0):
+    @staticmethod
+    def set_up_license(target_file, index=0):
         # Get BuildInfo for target file
         file_path = os.path.join(TESTSERVER_ROOT, target_file)
         build_info = BuildInfo(file_path)
@@ -208,131 +204,6 @@ class ViewTests(BaseServeViewTest):
         self.assertEqual(response.status_code, 200)
         file_path = os.path.join(TESTSERVER_ROOT, target_file)
         self.assertEqual(response['X-Sendfile'], file_path)
-
-    def test_api_get_license_list(self):
-        target_file = "build-info/snowball-blob.txt"
-        digest = self.set_up_license(target_file)
-
-        license_url = "/api/license/" + target_file
-
-        # Download JSON containing license information
-        response = self.client.get(license_url)
-        data = json.loads(response.content)["licenses"]
-
-        # Extract digests
-        digests = [d["digest"] for d in data]
-
-        # Make sure digests match what is in the database
-        self.assertIn(digest, digests)
-        self.assertEqual(len(digests), 1)
-
-    def test_api_get_license_list_multi_license(self):
-        target_file = "build-info/multi-license.txt"
-        digest_1 = self.set_up_license(target_file)
-        digest_2 = self.set_up_license(target_file, 1)
-
-        license_url = "/api/license/" + target_file
-
-        # Download JSON containing license information
-        response = self.client.get(license_url)
-        data = json.loads(response.content)["licenses"]
-
-        # Extract digests
-        digests = [d["digest"] for d in data]
-
-        # Make sure digests match what is in the database
-        self.assertIn(digest_1, digests)
-        self.assertIn(digest_2, digests)
-        self.assertEqual(len(digests), 2)
-
-    def test_api_get_license_list_404(self):
-        target_file = "build-info/snowball-b"
-        license_url = "/api/license/" + target_file
-
-        # Download JSON containing license information
-        response = self.client.get(license_url)
-        self.assertEqual(response.status_code, 404)
-
-    def test_api_download_file(self):
-        target_file = "build-info/snowball-blob.txt"
-        digest = self.set_up_license(target_file)
-
-        url = urlparse.urljoin("http://testserver/", target_file)
-        response = self.client.get(url, follow=True,
-                                   HTTP_LICENSE_ACCEPTED=digest)
-        self.assertEqual(response.status_code, 200)
-        file_path = os.path.join(TESTSERVER_ROOT, target_file)
-        self.assertEqual(response['X-Sendfile'], file_path)
-
-    def test_api_download_file_multi_license(self):
-        target_file = "build-info/multi-license.txt"
-        digest_1 = self.set_up_license(target_file)
-        digest_2 = self.set_up_license(target_file, 1)
-
-        url = urlparse.urljoin("http://testserver/", target_file)
-        response = self.client.get(
-            url, follow=True,
-            HTTP_LICENSE_ACCEPTED=" ".join([digest_1, digest_2]))
-        self.assertEqual(response.status_code, 200)
-        file_path = os.path.join(TESTSERVER_ROOT, target_file)
-        self.assertEqual(response['X-Sendfile'], file_path)
-
-    def test_api_download_file_404(self):
-        target_file = "build-info/snowball-blob.txt"
-        digest = self.set_up_license(target_file)
-
-        url = urlparse.urljoin("http://testserver/", target_file[:-2])
-        response = self.client.get(url, follow=True,
-                                   HTTP_LICENSE_ACCEPTED=digest)
-        self.assertEqual(response.status_code, 404)
-
-    def test_api_get_listing(self):
-        url = "/api/ls/build-info"
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-
-        data = json.loads(response.content)["files"]
-
-        # For each file listed, check some key attributes
-        for file_info in data:
-            file_path = os.path.join(TESTSERVER_ROOT,
-                                     file_info["url"].lstrip("/"))
-            if file_info["type"] == "folder":
-                self.assertTrue(os.path.isdir(file_path))
-            else:
-                self.assertTrue(os.path.isfile(file_path))
-
-            mtime = os.path.getmtime(file_path)
-
-            self.assertEqual(mtime, file_info["mtime"])
-
-    def test_api_get_listing_single_file(self):
-        url = "/api/ls/build-info/snowball-blob.txt"
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-
-        data = json.loads(response.content)["files"]
-
-        # Should be a listing for a single file
-        self.assertEqual(len(data), 1)
-
-        # For each file listed, check some key attributes
-        for file_info in data:
-            file_path = os.path.join(TESTSERVER_ROOT,
-                                     file_info["url"].lstrip("/"))
-            if file_info["type"] == "folder":
-                self.assertTrue(os.path.isdir(file_path))
-            else:
-                self.assertTrue(os.path.isfile(file_path))
-
-            mtime = os.path.getmtime(file_path)
-
-            self.assertEqual(mtime, file_info["mtime"])
-
-    def test_api_get_listing_404(self):
-        url = "/api/ls/buld-info"
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 404)
 
     def test_OPEN_EULA_txt(self):
         target_file = '~linaro-android/staging-vexpress-a9/test.txt'
@@ -640,27 +511,6 @@ class ViewTests(BaseServeViewTest):
         # this test should not cause an exception. Anything else is a pass.
         self.assertEqual(response.status_code, 200)
 
-    def test_sizeof_fmt(self):
-        self.assertEqual(_sizeof_fmt(1), '1')
-        self.assertEqual(_sizeof_fmt(1234), '1.2K')
-        self.assertEqual(_sizeof_fmt(1234567), '1.2M')
-        self.assertEqual(_sizeof_fmt(1234567899), '1.1G')
-        self.assertEqual(_sizeof_fmt(1234567899999), '1.1T')
-
-    def test_listdir(self):
-        patterns = [
-            (['b', 'a', 'latest', 'c'], ['latest', 'a', 'b', 'c']),
-            (['10', '1', '100', 'latest'], ['latest', '1', '10', '100']),
-            (['10', 'foo', '100', 'latest'], ['latest', '10', '100', 'foo']),
-        ]
-        for files, expected in patterns:
-            path = tempfile.mkdtemp()
-            self.addCleanup(shutil.rmtree, path)
-            for file in files:
-                with open(os.path.join(path, file), 'w') as f:
-                    f.write(file)
-            self.assertEqual(expected, views._listdir(path))
-
     def test_whitelisted_dirs(self):
         target_file = "precise/restricted/whitelisted.txt"
         url = urlparse.urljoin("http://testserver/", target_file)
@@ -864,253 +714,6 @@ class ViewTests(BaseServeViewTest):
 
         # Shouldn't be able to escape served paths...
         self.assertEqual(response.status_code, 404)
-
-    def test_get_key(self):
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY})
-
-        self.assertEqual(response.status_code, 200)
-        # Don't care what the key is, as long as it isn't blank
-        self.assertRegexpMatches(response.content, "\S+")
-
-    def test_get_key_api_disabled(self):
-        settings.MASTER_API_KEY = ""
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY})
-
-        self.assertEqual(response.status_code, 403)
-
-    def test_get_key_post_and_get_file(self):
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY})
-
-        self.assertEqual(response.status_code, 200)
-        # Don't care what the key is, as long as it isn't blank
-        self.assertRegexpMatches(response.content, "\S+")
-        key = response.content
-        last_used = APIKeyStore.objects.get(key=key).last_used
-
-        # Now write a file so we can upload it
-        file_content = "test_get_key_post_and_get_file"
-        file_root = "/tmp"
-
-        tmp_file_name = os.path.join(
-            file_root,
-            self.make_temporary_file(file_content))
-
-        try:
-            # Send the file
-            with open(tmp_file_name) as f:
-                response = self.client.post(
-                    "http://testserver/file_name",
-                    data={"key": key, "file": f})
-                self.assertEqual(response.status_code, 200)
-
-            # Check the upload worked by reading the file back from its
-            # uploaded location
-            uploaded_file_path = os.path.join(
-                settings.UPLOAD_PATH, key, "file_name")
-            with open(uploaded_file_path) as f:
-                self.assertEqual(f.read(), file_content)
-
-            # Test we can fetch the newly uploaded file if we present the key
-            response = self.client.get("http://testserver/file_name",
-                                       data={"key": key})
-            self.assertEqual(response.status_code, 200)
-
-            response = self.client.get("http://testserver/file_name")
-            self.assertNotEqual(response.status_code, 200)
-            self.assertNotEqual(
-                APIKeyStore.objects.get(key=key).last_used, last_used)
-        finally:
-            # Delete the files generated by the test
-            shutil.rmtree(os.path.join(settings.UPLOAD_PATH, key))
-
-    def test_get_public_key_post_and_get_file(self):
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY,
-                                         "public": ""})
-
-        self.assertEqual(response.status_code, 200)
-        # Don't care what the key is, as long as it isn't blank
-        self.assertRegexpMatches(response.content, "\S+")
-        key = response.content
-
-        # Now write a file so we can upload it
-        file_content = "test_get_key_post_and_get_file"
-        file_root = "/tmp"
-
-        tmp_file_name = os.path.join(
-            file_root,
-            self.make_temporary_file(file_content))
-
-        buildinfo_content = "\n".join([
-            "Format-Version: 0.1",
-            "Files-Pattern: *",
-            "Build-Name: test",
-            "License-Type: open"])
-        tmp_build_info = os.path.join(
-            file_root,
-            self.make_temporary_file(buildinfo_content))
-
-        try:
-            # Send the files
-            with open(tmp_file_name) as f:
-                response = self.client.post(
-                    "http://testserver/pub/file_name",
-                    data={"key": key, "file": f})
-                self.assertEqual(response.status_code, 200)
-
-            with open(tmp_build_info) as f:
-                response = self.client.post(
-                    "http://testserver/pub/BUILD-INFO.txt",
-                    data={"key": key, "file": f})
-                self.assertEqual(response.status_code, 200)
-
-            # Check the upload worked by reading the file back from its
-            # uploaded location
-            uploaded_file_path = os.path.join(
-                settings.SERVED_PATHS[0], 'pub/file_name')
-
-            with open(uploaded_file_path) as f:
-                self.assertEqual(f.read(), file_content)
-
-            # Test we can fetch the newly uploaded file
-            response = self.client.get("http://testserver/pub/file_name")
-            self.assertEqual(response.status_code, 200)
-        finally:
-            # Delete the files generated by the test
-            shutil.rmtree(os.path.join(settings.SERVED_PATHS[0], "pub"))
-
-    def test_post_empty_file(self):
-        '''Ensure we accept zero byte files'''
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY})
-
-        self.assertEqual(response.status_code, 200)
-        # Don't care what the key is, as long as it isn't blank
-        self.assertRegexpMatches(response.content, "\S+")
-        key = response.content
-
-        # Now write a file so we can upload it
-        file_content = ""
-        file_root = "/tmp"
-
-        tmp_file_name = os.path.join(
-            file_root,
-            self.make_temporary_file(file_content))
-
-        try:
-            # Send the file
-            with open(tmp_file_name) as f:
-                response = self.client.post(
-                    "http://testserver/file_name",
-                    data={"key": key, "file": f})
-                self.assertEqual(response.status_code, 200)
-
-            # Check the upload worked by reading the file back from its
-            # uploaded location
-            uploaded_file_path = os.path.join(
-                settings.UPLOAD_PATH, key, "file_name")
-            with open(uploaded_file_path) as f:
-                self.assertEqual(f.read(), file_content)
-
-            # Test we can fetch the newly uploaded file if we present the key
-            response = self.client.get("http://testserver/file_name",
-                                       data={"key": key})
-            self.assertEqual(response.status_code, 200)
-
-            response = self.client.get("http://testserver/file_name")
-            self.assertNotEqual(response.status_code, 200)
-        finally:
-            # Delete the files generated by the test
-            shutil.rmtree(os.path.join(settings.UPLOAD_PATH, key))
-
-    def test_post_no_file(self):
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY})
-
-        self.assertEqual(response.status_code, 200)
-        # Don't care what the key is, as long as it isn't blank
-        self.assertRegexpMatches(response.content, "\S+")
-        key = response.content
-
-        response = self.client.post(
-            "http://testserver/file_name", data={"key": key})
-        self.assertEqual(response.status_code, 500)
-
-    def test_post_file_no_key(self):
-        file_content = "test_post_file_no_key"
-        file_root = "/tmp"
-
-        tmp_file_name = os.path.join(
-            file_root,
-            self.make_temporary_file(file_content))
-
-        # Try to upload a file without a key.
-        with open(tmp_file_name) as f:
-            response = self.client.post(
-                "http://testserver/file_name", data={"file": f})
-            self.assertEqual(response.status_code, 500)
-
-        # Make sure the file didn't get created.
-        self.assertFalse(os.path.isfile(
-            os.path.join(settings.UPLOAD_PATH, "file_name")))
-
-    def test_post_file_random_key(self):
-        key = "%030x" % random.randrange(256 ** 15)
-        file_content = "test_post_file_random_key"
-        file_root = "/tmp"
-
-        tmp_file_name = os.path.join(
-            file_root,
-            self.make_temporary_file(file_content))
-
-        # Try to upload a file with a randomly generated key.
-        with open(tmp_file_name) as f:
-            response = self.client.post(
-                "http://testserver/file_name", data={"key": key, "file": f})
-            self.assertEqual(response.status_code, 500)
-
-        # Make sure the file didn't get created.
-        self.assertFalse(os.path.isfile(
-            os.path.join(settings.UPLOAD_PATH, key, "file_name")))
-
-    def test_api_delete_key(self):
-        response = self.client.get("http://testserver/api/request_key",
-                                   data={"key": settings.MASTER_API_KEY})
-
-        self.assertEqual(response.status_code, 200)
-        # Don't care what the key is, as long as it isn't blank
-        self.assertRegexpMatches(response.content, "\S+")
-        key = response.content
-        file_content = "test_api_delete_key"
-        file_root = "/tmp"
-
-        tmp_file_name = os.path.join(
-            file_root,
-            self.make_temporary_file(file_content))
-
-        with open(tmp_file_name) as f:
-            response = self.client.post(
-                "http://testserver/file_name", data={"key": key, "file": f})
-            self.assertEqual(response.status_code, 200)
-
-        self.assertTrue(os.path.isfile(os.path.join(settings.UPLOAD_PATH,
-                                                    key,
-                                                    "file_name")))
-
-        # Release the key, the files should be deleted
-        response = self.client.get("http://testserver/api/delete_key",
-                                   data={"key": key})
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(os.path.isfile(
-            os.path.join(settings.UPLOAD_PATH, key, "file_name")))
-
-        # Key shouldn't work after released
-        response = self.client.get("http://testserver/file_name",
-                                   data={"key": key})
-        self.assertNotEqual(response.status_code, 200)
 
 
 class HowtoViewTests(BaseServeViewTest):
