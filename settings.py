@@ -131,12 +131,13 @@ LOGIN_REDIRECT_URL = '/'
 # Available plugins:
 #   license_protected_downloads.group_auth_crowd - uses CROWD groups
 #   license_protected_downloads.group_auth_openid - uses Launchpad OpenID teams
-GROUP_AUTH_MODULES = ['license_protected_downloads.group_auth_crowd']
+#GROUP_AUTH_MODULES = ['license_protected_downloads.group_auth_crowd']
+GROUP_AUTH_MODULES = ['license_protected_downloads.group_auth_openid']
 
 # Config for django_openid_auth.auth.OpenIDBackend
 OPENID_CREATE_USERS = True
-#OPENID_SSO_SERVER_URL = 'https://login.launchpad.net/'
-OPENID_SSO_SERVER_URL = 'https://login.linaro.org:8443/openidserver/op'
+OPENID_SSO_SERVER_URL = 'https://login.launchpad.net/'
+#OPENID_SSO_SERVER_URL = 'https://login.linaro.org:8443/openidserver/op'
 OPENID_UPDATE_DETAILS_FROM_SREG = True
 OPENID_LAUNCHPAD_TEAMS_MAPPING_AUTO = True
 OPENID_FOLLOW_RENAMES = True
