@@ -202,6 +202,15 @@ def send_file(path):
     return response
 
 
+# psw0523 add for generic file download
+def send_my_file(path):
+    import django.core.servers.basehttp import FileWrapper
+    file_name = os.path.basename(path)
+    wrapper = FileWrapper(file(file_name))
+    response = HttpResponse(wrapper, content_type='text/plain')
+    return response
+
+
 def group_auth_failed_response(request, auth_groups):
     """Construct a nice response detailing list of auth groups that
     will allow access to the requested file."""
@@ -344,7 +353,9 @@ def file_server_get(request, path):
 
     # If we didn't have any other response, it's ok to send file now
     if not response:
-        response = send_file(path)
+    		# psw0523 fix
+        #response = send_file(path)
+        response = send_my_file(path)
 
     return response
 
