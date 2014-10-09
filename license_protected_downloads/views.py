@@ -204,11 +204,15 @@ def send_file(path):
 
 # psw0523 add for generic file download
 def send_my_file(path):
-    import django.core.servers.basehttp import FileWrapper
-    file_name = os.path.basename(path)
-    wrapper = FileWrapper(file(file_name))
-    response = HttpResponse(wrapper, content_type='text/plain')
+    from django.core.servers.basehttp import FileWrapper
+    mimetypes.init()
+    mime = mimetypes.guess_type(path)[0]
+    if mime is None:
+        mime = "application/force-download"
+    wrapper = FileWrapper(file(path))
+    response = HttpResponse(wrapper, mimetype=mime)
     return response
+
 
 
 def group_auth_failed_response(request, auth_groups):
